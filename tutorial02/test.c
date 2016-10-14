@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <float.h>
 #include "leptjson.h"
 
 static int main_ret = 0;
@@ -18,35 +19,51 @@ static int test_pass = 0;
         }\
     } while(0)
 
+/* TODO move to header file */
+#define EXPECT_EQ_TYPE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), lept_get_error_name(expect, LEPT_ENUM_TYPE), lept_get_error_name(actual, LEPT_ENUM_TYPE), "%s")
+#define EXPECT_EQ_PARSE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), lept_get_error_name(expect, LEPT_ENUM_PARSE), lept_get_error_name(actual, LEPT_ENUM_PARSE), "%s")
 #define EXPECT_EQ_INT(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%d")
 #define EXPECT_EQ_DOUBLE(expect, actual) EXPECT_EQ_BASE((expect) == (actual), expect, actual, "%.17g")
+
+/* 
+#define NUM_TO_STR(num_macro) (sprintf(buffer, "%.17g", num_macro), printf(#num_macro ", %s\n", buffer))
+*/
+#define NUM_TO_STR(num_macro) (sprintf(buffer, "%.17g", num_macro))
+/*  DBL_DECIMAL_DIG: 17
+ */
+
+#define TEST_NUMBER_MAC(num_macro) \
+    do {\
+        NUM_TO_STR(num_macro);\
+        TEST_NUMBER(num_macro, buffer);\
+    } while(0)
 
 static void test_parse_null() {
     lept_value v;
     v.type = LEPT_FALSE;
-    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "null"));
-    EXPECT_EQ_INT(LEPT_NULL, lept_get_type(&v));
+    EXPECT_EQ_TYPE(LEPT_PARSE_OK, lept_parse(&v, "null"));
+    EXPECT_EQ_PARSE(LEPT_NULL, lept_get_type(&v));
 }
 
 static void test_parse_true() {
     lept_value v;
     v.type = LEPT_FALSE;
-    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "true"));
-    EXPECT_EQ_INT(LEPT_TRUE, lept_get_type(&v));
+    EXPECT_EQ_TYPE(LEPT_PARSE_OK, lept_parse(&v, "true"));
+    EXPECT_EQ_PARSE(LEPT_TRUE, lept_get_type(&v));
 }
 
 static void test_parse_false() {
     lept_value v;
     v.type = LEPT_TRUE;
-    EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, "false"));
-    EXPECT_EQ_INT(LEPT_FALSE, lept_get_type(&v));
+    EXPECT_EQ_TYPE(LEPT_PARSE_OK, lept_parse(&v, "false"));
+    EXPECT_EQ_PARSE(LEPT_FALSE, lept_get_type(&v));
 }
 
 #define TEST_NUMBER(expect, json)\
     do {\
         lept_value v;\
-        EXPECT_EQ_INT(LEPT_PARSE_OK, lept_parse(&v, json));\
-        EXPECT_EQ_INT(LEPT_NUMBER, lept_get_type(&v));\
+        EXPECT_EQ_TYPE(LEPT_PARSE_OK, lept_parse(&v, json));\
+        EXPECT_EQ_PARSE(LEPT_NUMBER, lept_get_type(&v));\
         EXPECT_EQ_DOUBLE(expect, lept_get_number(&v));\
     } while(0)
 
@@ -76,8 +93,8 @@ static void test_parse_number() {
     do {\
         lept_value v;\
         v.type = LEPT_FALSE;\
-        EXPECT_EQ_INT(error, lept_parse(&v, json));\
-        EXPECT_EQ_INT(LEPT_NULL, lept_get_type(&v));\
+        EXPECT_EQ_TYPE(error, lept_parse(&v, json));\
+        EXPECT_EQ_PARSE(LEPT_NULL, lept_get_type(&v));\
     } while(0)
 
 static void test_parse_expect_value() {
@@ -89,7 +106,7 @@ static void test_parse_invalid_value() {
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "nul");
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "?");
 
-#if 0
+#if 1
     /* invalid number */
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "+0");
     TEST_ERROR(LEPT_PARSE_INVALID_VALUE, "+1");
@@ -105,7 +122,7 @@ static void test_parse_invalid_value() {
 static void test_parse_root_not_singular() {
     TEST_ERROR(LEPT_PARSE_ROOT_NOT_SINGULAR, "null x");
 
-#if 0
+#if 1
     /* invalid number */
     TEST_ERROR(LEPT_PARSE_ROOT_NOT_SINGULAR, "0123"); /* after zero should be '.' or nothing */
     TEST_ERROR(LEPT_PARSE_ROOT_NOT_SINGULAR, "0x0");
@@ -114,10 +131,44 @@ static void test_parse_root_not_singular() {
 }
 
 static void test_parse_number_too_big() {
-#if 0
+#if 1
     TEST_ERROR(LEPT_PARSE_NUMBER_TOO_BIG, "1e309");
     TEST_ERROR(LEPT_PARSE_NUMBER_TOO_BIG, "-1e309");
 #endif
+}
+
+static void test_parse_corner() {
+    char buffer[25];    /* 17 digit 1 -/+ 1 . 4 e 1 nul*/
+
+    TEST_NUMBER(0.0, "0");
+    TEST_NUMBER(0.0, "-0");
+    TEST_NUMBER(1.0, "1");
+    TEST_NUMBER(1.0000000000000002, "1.0000000000000002"); /* smallest number > 1 */
+    TEST_NUMBER(1.0000000000000004, "1.0000000000000004");
+    TEST_NUMBER(2.0, "2");
+    TEST_NUMBER(-2.0, "-2");
+
+    TEST_NUMBER(0e0, "2e-1074");    /* min subnormal positive double */
+    TEST_NUMBER(2.2250738585072009e-308, "2.2250738585072009e-308");    /* max subnormal double */
+    TEST_NUMBER(-2.2250738585072009e-308, "-2.2250738585072009e-308");
+    TEST_NUMBER(2.2250738585072014e-308, "2.2250738585072014e-308");    /* min normal positive double */
+    TEST_NUMBER(-2.2250738585072014e-308, "-2.2250738585072014e-308");
+    TEST_NUMBER(1.7976931348623157e308, "1.7976931348623157e308");    /* max double */
+    TEST_NUMBER(-1.7976931348623157e308, "-1.7976931348623157e308");    /* max double */
+
+    TEST_NUMBER_MAC(FLT_MIN);
+    TEST_NUMBER_MAC(FLT_EPSILON);
+    TEST_NUMBER_MAC(FLT_MAX);
+    TEST_NUMBER_MAC(DBL_MIN);
+    TEST_NUMBER_MAC(DBL_EPSILON);
+    TEST_NUMBER_MAC(DBL_MAX);
+
+    TEST_NUMBER_MAC(-FLT_MIN);
+    TEST_NUMBER_MAC(-FLT_EPSILON);
+    TEST_NUMBER_MAC(-FLT_MAX);
+    TEST_NUMBER_MAC(-DBL_MIN);
+    TEST_NUMBER_MAC(-DBL_EPSILON);
+    TEST_NUMBER_MAC(-DBL_MAX);
 }
 
 static void test_parse() {
@@ -125,6 +176,7 @@ static void test_parse() {
     test_parse_true();
     test_parse_false();
     test_parse_number();
+    test_parse_corner();
     test_parse_expect_value();
     test_parse_invalid_value();
     test_parse_root_not_singular();
